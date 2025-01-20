@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoramento - Santo André/SP</title>
+    <style>
+        :root {
+            --background-color: #f4f4f9;
+            --text-color: #333;
+            --overlay-color: rgba(0, 0, 0, 0.6);
+            --font-family: Arial, sans-serif;
+        }
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: var(--background-color);
+            height: 100vh;
+            overflow-y: auto;
+        }
+        h1 {
+            margin-top: 20px;
+            color: var(--text-color);
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .controls form {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .controls form input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 200px;
+        }
+        .controls form button {
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .controls form button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .mosaic {
+            display: grid;
+            grid-template-columns: repeat(4, 352px);
+            gap: 10px;
+            width: 100%;
+            max-width: 1200px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .camera {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .camera iframe {
+            width: 352px;
+            height: 240px;
+            border: none;
+        }
+        .camera .title {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--overlay-color);
+            color: #fff;
+            text-align: center;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+        .camera button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #FF4C4C;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .saved-groups {
+            position: absolute;
+            top: 100px;
+            left: 10px;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            max-height: 400px;
+            width: 200px;
+            display: none;
+        }
+        .saved-groups h2 {
+            margin-top: 0;
+            font-size: 18px;
+            text-align: center;
+        }
+        .saved-groups .group {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .saved-groups .group:hover {
+            background-color: #f0f0f0;
+        }
+        .saved-groups .remove-group {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: red;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .saved-groups .remove-group:hover {
+            background-color: darkred;
+        }
+        .group-toggle-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 40px;
+            height: 40px;
+            background-color: #007BFF;
+            color: white;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monitoramento - Santo André/SP</h1>
+    <div class="controls">
+        <form onsubmit="event.preventDefault(); addCamera();">
+            <input type="text" id="camera-url" placeholder="URL da câmera" required>
+            <input type="text" id="camera-title" placeholder="Nome">
+            <button type="submit">Adicionar câmera</button>
+        </form>
+        <div>
+            <span id="camera-count">0 Câmeras</span>
+            <button id="save-group-button" onclick="saveGroup()" disabled>Salvar grupo</button>
+            <button id="reset-button" onclick="resetCameras()">Resetar câmeras</button>
+        </div>
+    </div>
+    <div class="mosaic"></div>
+    
+    <!-- Lista de grupos salvos -->
+    <div class="saved-groups" id="saved-groups">
+        <h2>Grupos salvos</h2>
+        <!-- Grupos serão inseridos aqui -->
+    </div>
+
+    <!-- Botão para abrir a aba dos grupos -->
+    <div class="group-toggle-button" onclick="toggleGroupSidebar()">&#9776;</div>
+
+    <script>
+        let savedCameras = [];
+        let cameraCount = 0;
+        let groups = JSON.parse(localStorage.getItem('groups')) || [];
+
+        // Carregar grupos salvos do localStorage ao iniciar
+        window.onload = () => {
+            groups.forEach(group => {
+                addGroupToSidebar(group);
+            });
+        }
+
+        function addCamera() {
+            const url = document.getElementById('camera-url').value;
+            const title = document.getElementById('camera-title').value || 'Nova Câmera';
+
+            if (url) {
+                const mosaic = document.querySelector('.mosaic');
+                const cameraDiv = document.createElement('div');
+                cameraDiv.classList.add('camera');
+                cameraDiv.innerHTML = `
+                    <iframe src="${url}" allowfullscreen></iframe>
+                    <div class="title">${title}</div>
+                    <button onclick="removeCamera(this)">X</button>
+                `;
+                mosaic.appendChild(cameraDiv);
+
+                savedCameras.push({ url, title });
+                cameraCount++;
+                updateCameraCount();
+
+                // Enable or disable the save group button based on camera count
+                document.getElementById('save-group-button').disabled = cameraCount <= 1;
+            } else {
+                alert('Por favor, insira uma URL válida.');
+            }
+
+            document.getElementById('camera-url').value = '';
+            document.getElementById('camera-title').value = '';
+        }
+
+        function removeCamera(button) {
+            const cameraDiv = button.parentElement;
+            const title = cameraDiv.querySelector('.title').innerText;
+            const index = savedCameras.findIndex(camera => camera.title === title);
+
+            if (index !== -1) {
+                savedCameras.splice(index, 1);
+                cameraDiv.remove();
+                cameraCount--;
+                updateCameraCount();
+            }
+
+            // Disable the save group button if there are less than 2 cameras
+            document.getElementById('save-group-button').disabled = cameraCount <= 1;
+        }
+
+        function updateCameraCount() {
+            document.getElementById('camera-count').innerText = `${cameraCount} Câmeras`;
+        }
+
+        function saveGroup() {
+            if (cameraCount > 1) {
+                const groupName = prompt('Insira o nome do grupo:');
+                if (groupName) {
+                    const group = {
+                        name: groupName,
+                        cameras: [...savedCameras]
+                    };
+                    groups.push(group);
+                    localStorage.setItem('groups', JSON.stringify(groups)); // Salva no localStorage
+                    addGroupToSidebar(group);
+                    resetCameras(); // Clear the cameras after saving the group
+                }
+            }
+        }
+
+        function addGroupToSidebar(group) {
+            const groupDiv = document.createElement('div');
+            groupDiv.classList.add('group');
+            groupDiv.innerHTML = `
+                ${group.name}
+                <div class="remove-group" onclick="removeGroup(this)">X</div>
+            `;
+            groupDiv.onclick = function() {
+                viewGroupCameras(group);
+            };
+            document.getElementById('saved-groups').appendChild(groupDiv);
+        }
+
+        function removeGroup(button) {
+            const groupDiv = button.parentElement;
+            const groupName = groupDiv.innerText.trim();
+            groups = groups.filter(group => group.name !== groupName);
+            localStorage.setItem('groups', JSON.stringify(groups)); // Atualiza o localStorage
+            groupDiv.remove();
+        }
+
+        function viewGroupCameras(group) {
+            alert('Exibindo as câmeras do grupo: ' + group.name);
+            const mosaic = document.querySelector('.mosaic');
+            mosaic.innerHTML = ''; // Limpa a tela antes de mostrar as câmeras do grupo
+
+            group.cameras.forEach(camera => {
+                const cameraDiv = document.createElement('div');
+                cameraDiv.classList.add('camera');
+                cameraDiv.innerHTML = `
+                    <iframe src="${camera.url}" allowfullscreen></iframe>
+                    <div class="title">${camera.title}</div>
+                    <button onclick="removeCamera(this)">X</button>
+                `;
+                mosaic.appendChild(cameraDiv);
+            });
+        }
+
+        function resetCameras() {
+            savedCameras = [];
+            cameraCount = 0;
+            updateCameraCount();
+            document.querySelector('.mosaic').innerHTML = '';
+        }
+
+        // Função para alternar a visibilidade da aba de grupos
+        function toggleGroupSidebar() {
+            const sidebar = document.getElementById('saved-groups');
+            sidebar.style.display = (sidebar.style.display === 'none' || sidebar.style.display === '') ? 'block' : 'none';
+        }
+    </script>
+</body>
+</html>
